@@ -1,0 +1,167 @@
+const express = require('express');
+const mongoose = require('mongoose');
+const bodyParser = require('body-parser');
+const ejs = require('ejs');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// MongoDB connection
+mongoose.connect('mongodb://localhost:27017/moneyTrackerDB', {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    useFindAndModify: false,
+    useCreateIndex: true
+});
+
+// Schema and model for transactions
+const transactionSchema = new mongoose.Schema({
+    description: String,
+    amount: Number,
+    type: String // 'income' or 'expense'
+});
+
+const Transaction = mongoose.model('Transaction', transactionSchema);
+
+// Middleware
+app.set('view engine', 'ejs');
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(express.static('public'));
+
+// CSS (public/styles.css)
+app.use(express.static(__dirname + '/public'));
+
+// HTML Templates
+const homeHTML = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Money Tracker App</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Money Tracker App</h1>
+        <div class="summary">
+            <h3>Summary</h3>
+            <p>Total Income: <%= totalIncome %></p>
+            <p>Total Expenses: <%= totalExpenses %></p>
+            <p>Balance: <%= balance %></p>
+        </div>
+        
+        <h2>Transactions</h2>
+        <ul class="transactions">
+            <% transactions.forEach(transaction => { %>
+                <li class="<%= transaction.amount < 0 ? 'expense' : 'income' %>">
+                    <span><%= transaction.description %></span>
+                    <span><%= transaction.amount %></span>
+                </li>
+            <% }); %>
+        </ul>
+        
+        <a href="/add">Add Transaction</a>
+    </div>
+</body>
+</html>
+`;
+
+const addTransactionHTML = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add Transaction</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Add Transaction</h1>
+        <form action="/add" method="POST">
+            <label for="description">Description:</label>
+            <input type="text" id="description" name="description" required>
+            
+            <label for="amount">Amount:</label>
+            <input type="number" id="amount" name="amount" required>
+            
+            <label for="type">Type:</label>
+            <select id="type" name="type">
+                <option value="income">Income</option>
+                <option value="expense">Expense</option>
+            </select>
+            
+            <button type="submit">Add</button>
+        </form>
+    </div>
+</body>
+</html>
+`;
+
+const errorHTML = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Error</title>
+</head>
+<body>
+    <h1>Error</h1>
+    <p><%= message %></p>
+</body>
+</html>
+`;
+
+// Routes
+app.get('/', async (req, res) => {
+    try {
+        const transactions = await Transaction.find();
+        let totalIncome = 0, totalExpenses = 0;
+
+        transactions.forEach(transaction => {
+            if (transaction.type === 'income') {
+                totalIncome += transaction.amount;
+            } else if (transaction.type === 'expense') {
+                totalExpenses += transaction.amount;
+            }
+        });
+
+        const balance = totalIncome - totalExpenses;
+
+        const renderedHTML = ejs.render(homeHTML, { transactions: transactions, totalIncome: totalIncome, totalExpenses: totalExpenses, balance: balance });
+        res.send(renderedHTML);
+    } catch (err) {
+        console.log(err);
+        const renderedHTML = ejs.render(errorHTML, { message: 'Error fetching data' });
+        res.send(renderedHTML);
+    }
+});
+
+app.get('/add', (req, res) => {
+    res.send(addTransactionHTML);
+});
+
+app.post('/add', async (req, res) => {
+    const { description, amount, type } = req.body;
+    const newTransaction = new Transaction({
+        description: description,
+        amount: amount,
+        type: type
+    });
+
+    try {
+        await newTransaction.save();
+        res.redirect('/');
+    } catch (err) {
+        console.log(err);
+        const renderedHTML = ejs.render(errorHTML, { message: 'Error adding transaction' });
+        res.send(renderedHTML);
+    }
+});
+
+// Start server
+app.listen(PORT, () => {
+    console.log(`Server is running on http://localhost:${PORT}`);
+});
