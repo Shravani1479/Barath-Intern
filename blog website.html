@@ -1,0 +1,152 @@
+const express = require('express');
+const mongoose = require('mongoose');
+const bodyParser = require('body-parser');
+const ejs = require('ejs');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// MongoDB connection
+mongoose.connect('mongodb://localhost:27017/blogDB', {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    useFindAndModify: false,
+    useCreateIndex: true
+});
+
+// Create schema and model for posts
+const postSchema = new mongoose.Schema({
+    title: String,
+    body: String
+});
+
+const Post = mongoose.model('Post', postSchema);
+
+// Middleware
+app.set('view engine', 'ejs');
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(express.static('public'));
+
+// CSS (public/styles.css)
+app.use(express.static(__dirname + '/public'));
+
+// HTML Templates
+const homeHTML = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blog Home</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Blog Home</h1>
+        <ul>
+            <% posts.forEach(post => { %>
+                <li>
+                    <h2><a href="/post/<%= post._id %>"><%= post.title %></a></h2>
+                    <p><%= post.body %></p>
+                </li>
+            <% }); %>
+        </ul>
+        <a href="/newpost">New Post</a>
+    </div>
+</body>
+</html>
+`;
+
+const newPostHTML = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>New Post</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>New Post</h1>
+        <form action="/newpost" method="POST">
+            <label for="title">Title:</label>
+            <input type="text" id="title" name="title" required>
+            
+            <label for="body">Body:</label>
+            <textarea id="body" name="body" rows="8" required></textarea>
+            
+            <button type="submit">Publish</button>
+        </form>
+    </div>
+</body>
+</html>
+`;
+
+const postHTML = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= post.title %></title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1><%= post.title %></h1>
+        <p><%= post.body %></p>
+        <a href="/">Back to Home</a>
+    </div>
+</body>
+</html>
+`;
+
+// Routes
+app.get('/', (req, res) => {
+    Post.find({}, (err, posts) => {
+        if (err) {
+            console.log(err);
+        } else {
+            const renderedHTML = ejs.render(homeHTML, { posts: posts });
+            res.send(renderedHTML);
+        }
+    });
+});
+
+app.get('/newpost', (req, res) => {
+    res.send(newPostHTML);
+});
+
+app.post('/newpost', (req, res) => {
+    const { title, body } = req.body;
+    const newPost = new Post({
+        title: title,
+        body: body
+    });
+    newPost.save((err) => {
+        if (err) {
+            console.log(err);
+        } else {
+            console.log('New post added');
+            res.redirect('/');
+        }
+    });
+});
+
+app.get('/post/:postId', (req, res) => {
+    const postId = req.params.postId;
+    Post.findById(postId, (err, post) => {
+        if (err) {
+            console.log(err);
+        } else {
+            const renderedHTML = ejs.render(postHTML, { post: post });
+            res.send(renderedHTML);
+        }
+    });
+});
+
+// Start server
+app.listen(PORT, () => {
+    console.log(`Server is running on http://localhost:${PORT}`);
+});
